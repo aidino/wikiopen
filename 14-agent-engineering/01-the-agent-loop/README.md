@@ -2,10 +2,10 @@
 
 > Mọi `agent` vào năm 2026 đều là một biến thể của vòng lặp `ReAct` từ năm 2022 — bao gồm cả Claude Code, Cursor, Devin hay Operator. Các `reasoning tokens` (token suy luận) đan xen (`interleave`) với các lệnh gọi công cụ (`tool calls`) và kết quả quan sát (`observations`) cho đến khi một điều kiện dừng (`stop condition`) được kích hoạt. Hãy nắm thật vững vòng lặp cốt lõi này trước khi chạm vào bất kỳ `framework` nào.
 
-**Loại bài học (Type):** Build (Thực hành xây dựng)
-**Ngôn ngữ (Languages):** Python (`stdlib` — thư viện chuẩn)
-**Kiến thức tiên quyết (Prerequisites):** Phase 11 (LLM Engineering), Phase 13 (Tools and Protocols)
-**Thời gian (Time):** ~60 phút
+- **Loại bài học (Type):** Build (Thực hành xây dựng)
+- **Ngôn ngữ (Languages):** Python (`stdlib` — thư viện chuẩn)
+- **Kiến thức tiên quyết (Prerequisites):** Phase 11 (LLM Engineering), Phase 13 (Tools and Protocols)
+- **Thời gian (Time):** ~60 phút
 
 ## Mục tiêu học tập (Learning Objectives)
 
