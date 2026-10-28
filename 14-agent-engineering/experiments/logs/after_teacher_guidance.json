@@ -1,0 +1,218 @@
+{
+  "run_tag": "after_teacher_guidance",
+  "total_tasks": 5,
+  "tasks_passed": 5,
+  "total_test_cases_passed": 29,
+  "total_test_cases": 29,
+  "results": [
+    {
+      "task_id": "01_sum_valid_integers",
+      "title": "Level 1 (Easy): Tổng các chuỗi số nguyên hợp lệ",
+      "passed": true,
+      "passed_count": 4,
+      "total_count": 4,
+      "turns_used": 3,
+      "queried_knowledge": true,
+      "final_code": "def sum_valid_numbers(items: list[str]) -> int:\n    total = 0\n    for item in items:\n        s = item.strip()\n        if not s:\n            continue\n        digits = s[1:] if s[0] in ('+', '-') else s\n        if digits.isdigit():\n            total += int(s)\n    return total",
+      "failure_summary": "",
+      "steps": [
+        {
+          "turn": 1,
+          "thought": "",
+          "tool_name": "search_knowledge",
+          "tool_args": {
+            "query": "sum_valid_numbers"
+          },
+          "observation": "### [01-string-integer-parsing.md] (score=16)\n# Bài học 01: Kiểm tra và Tính tổng Chuỗi Số Nguyên Hợp Lệ (`sum_valid_numbers`)\n\n## Lỗi thường gặp của Student (từ Log Baseline)\n- Không dùng `int(s)` trực tiếp kèm `try/except` đơn thuần vì trong Python `int(\"1_000\")` được chấp nhận là `1000`, trong khi đề bài coi `\"1_000\"` là ký tự không hợp lệ.\n- Không tự viết các nhánh `if item[1] == ' '` rời rạc vì sẽ bỏ sót các chữ số khác `'0'`.\n\n## Phương pháp Chuẩn trong Python\nĐể kiểm tra một chuỗi `item` có phải là số nguyên hợp lệ hay không:\n1. Dùng `s = item.strip()` để loại bỏ khoảng trắng đầu/cuối (bao gồm `' '`, `'\\n'`, `'\\t'`).\n2. Nếu `not s` (chuỗi rỗng): bỏ qua.\n3. Nếu `s[0] in ('+', '-')`: phần còn lại là `digits = s[1:]`. Ngược lại: `digits = s`.\n4. Kiểm tra `digits.isdigit()`:\n   - Phương thức `.isdigit()` đảm bảo chuỗi có ít nhất 1 ký tự và TẤT CẢ đều là chữ số `0-9` (tự động loại bỏ `'--1'`, `'++2'`, `'3.14'`, `'1e5'`, `'1_000'`, `'abc'`).\n5. Nếu `digits.isdigit()` là `True`, cộng `int(s)` vào tổng.\n\n## Mẫu cài đặt tham khảo\n```python\ndef sum_valid_numbers(items: list[str]) -> int:\n    total = 0\n    for item in items:\n        s = item.strip()\n        if not s:\n            continue\n        digits = s[1:] if s[0] in (\"+\", \"-\") else s\n        if digits.isdigit():\n            total += int(s)\n    return total\n```\n\n---\n\n### [03-rpn-stack-evaluation.md] (score=2)\n# Bài học 03: Tính Biểu Thức Hậu Tố RPN An Toàn (`evaluate_rpn_safe`)\n\n## Phân tích Lỗi của Student từ Log Baseline\nTrong lần chạy baseline, Student mắc 3 lỗi nghiêm trọng:\n1. **Dùng `a // b` cho phép chia nguyên:** Trong Python, `-7 // 2` cho kết quả `-4` (làm tròn xuống $-\\infty$), trong khi đề bài yêu cầu làm tròn về 0 (`-7 / 2 -> -3`, `-13 / 5 -> -2`).\n   - **Cách sửa:** Dùng `int(a / b)` để chia nguyên làm tròn về 0!\n2. **Kiểm tra chia cho 0 sai vị trí:** Student kiểm tra `if stack[0] == 0` ở cuối hàm (khiến kết quả hợp lệ bằng 0 hoặc khác 0 bị nhầm thành `'ERROR:DIV_BY_ZERO'`), thay vì kiểm tra số chia `b == 0` NGAY TRƯỚC phép chia.\n   - **Cách sửa:** Khi `token == '/'`, kiểm tra `if b == 0: return 'ERROR:DIV_BY_ZERO'` trước khi tính `int(a / b)`.\n3. **Không bắt lỗi token lạ:** Gọi `int(token)` trực tiếp trên `'foo'` gây `ValueError`.\n\n## Quy trình Chuẩn cho `evaluate_rpn_safe`\n1. Nếu `not tokens`: trả về `'ERROR:INVALID'`.\n2. Duyệt từng `token` trong `tokens`:\n   - Nếu `token in ('+', '-', '*', '/')`:\n     - Nếu `len(stack) < 2`: trả về `'ERROR:INVALID'`.\n     - Lấy `b = stack.pop()`, sau đó `a = stack.pop()` (lưu ý thứ tự: `b` lấy ra trước, `a` lấy ra sau).\n     - Nếu `token == '/'`:\n       - Nếu `b == 0`: trả về `'ERROR:DIV_BY_ZERO'`.\n       - Tính `stack.append(int(a / b))`.\n     - Thực hiện tương tự cho `+`, `-`, `*`.\n   - Ngược lại (khi `token` là toán hạng):\n     - Kiểm tra xem `token` có phải chuỗi số nguyên hợp lệ không (`digits = token[1:] if token.startswith(('+', '-')) else token`). Nếu `not digits.isdigit()`: trả về `'ERROR:INVALID'`.\n     - Đẩy `int(token)` vào `stack`.\n3. Sau vòng lặp, nếu `len(stack) != 1`: trả về `'ERROR:INVALID'`.\n4. Trả về `stack[0]` (kể cả khi `stack[0] == 0` thì đó vẫn là kết quả số nguyên hợp lệ!).\n\n## Mẫu cài đặt tham khảo\n```python\ndef evaluate_rpn_safe(tokens: list[str]) -> int | str:\n    if not tokens:\n        return \"ERROR:INVALID\"\n    stack: list[int] = []\n    for token in tokens:\n        if token in (\"+\", \"-\", \"*\", \"/\"):\n            if len(stack) < 2:\n                return \"ERROR:INVALID\"\n            b = stack.pop()\n            a = stack.pop()\n            if token == \"+\":\n                stack.append(a + b)\n            elif token == \"-\":\n                stack.append(a - b)\n            elif token == \"*\":\n                stack.append(a * b)\n            else:\n                if b == 0:\n                    return \"ERROR:DIV_BY_ZERO\"\n                stack.append(int(a / b))\n        else:\n            digits = token[1:] if token.startswith((\"+\", \"-\")) else token\n            if not digits.isdigit():\n                return \"ERROR:INVALID\"\n            stack.append(int(token))\n    if len(stack) != 1:\n        return \"ERROR:INVALID\"\n    return stack[0]\n```\n\n[HƯỚNG DẪN BƯỚC TIẾP THEO]: Bạn đã tra cứu xong kho tri thức. Ở bước tiếp theo, KHÔNG gọi `search_knowledge` nữa; hãy viết code Python và gọi `test_code`."
+        },
+        {
+          "turn": 2,
+          "thought": "",
+          "tool_name": "test_code",
+          "tool_args": {
+            "code": "def sum_valid_numbers(items: list[str]) -> int:\n    total = 0\n    for item in items:\n        s = item.strip()\n        if not s:\n            continue\n        digits = s[1:] if s[0] in ('+', '-') else s\n        if digits.isdigit():\n            total += int(s)\n    return total"
+          },
+          "observation": "PASS: Vượt qua toàn bộ 2/2 test cases.\n[HƯỚNG DẪN BƯỚC TIẾP THEO]: Sample tests đã PASS. Hãy gọi `submit_solution` để nộp đoạn code này."
+        },
+        {
+          "turn": 3,
+          "thought": "",
+          "tool_name": "submit_solution",
+          "tool_args": {
+            "code": "def sum_valid_numbers(items: list[str]) -> int:\n    total = 0\n    for item in items:\n        s = item.strip()\n        if not s:\n            continue\n        digits = s[1:] if s[0] in ('+', '-') else s\n        if digits.isdigit():\n            total += int(s)\n    return total"
+          },
+          "observation": "Đã nhận bài nộp `submit_solution`."
+        }
+      ]
+    },
+    {
+      "task_id": "02_merge_adjacent_ranges",
+      "title": "Level 2 (Medium): Gộp các khoảng số nguyên chồng lấp hoặc liền kề",
+      "passed": true,
+      "passed_count": 4,
+      "total_count": 4,
+      "turns_used": 3,
+      "queried_knowledge": true,
+      "final_code": "def merge_port_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:\n    sorted_ranges = sorted(ranges)\n    merged: list[tuple[int, int]] = []\n    for cur_start, cur_end in sorted_ranges:\n        if not merged:\n            merged.append((cur_start, cur_end))\n        else:\n            last_start, last_end = merged[-1]\n            if cur_start <= last_end + 1:\n                merged[-1] = (last_start, max(last_end, cur_end))\n            else:\n                merged.append((cur_start, cur_end))\n    return merged",
+      "failure_summary": "",
+      "steps": [
+        {
+          "turn": 1,
+          "thought": "",
+          "tool_name": "search_knowledge",
+          "tool_args": {
+            "query": "merge_port_ranges"
+          },
+          "observation": "### [02-interval-merging.md] (score=16)\n# Bài học 02: Gộp Khoảng Chồng Lấp hoặc Liền Kề (`merge_port_ranges`)\n\n## Quy tắc Cốt lõi\n1. **Không làm thay đổi đầu vào (Immutability):** Luôn dùng `sorted_ranges = sorted(ranges)` thay vì `ranges.sort()`.\n2. **Tránh dùng slice `[1:]` trên dòng `for`:** Các model nhỏ đôi khi nhầm dấu `:` trong `[1:]` với dấu `:` cuối câu lệnh `for`, gây `SyntaxError: expected ':'`. Hãy duyệt trực tiếp `for cur_start, cur_end in sorted_ranges:` và kiểm tra `if not merged:`.\n3. **Điều kiện gộp khoảng liền kề hoặc chồng lấp:**\n   - Giả sử khoảng cuối cùng trong danh sách kết quả là `(last_start, last_end)` và khoảng đang xét là `(cur_start, cur_end)`.\n   - Vì hai khoảng liền kề như `(10, 12)` và `(13, 15)` có `13 == 12 + 1`, điều kiện gộp là:\n     `cur_start <= last_end + 1`\n   - Khi gộp, cập nhật phần tử cuối: `merged[-1] = (last_start, max(last_end, cur_end))`.\n\n## Mẫu cài đặt tham khảo\n```python\ndef merge_port_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:\n    sorted_ranges = sorted(ranges)\n    merged: list[tuple[int, int]] = []\n    for cur_start, cur_end in sorted_ranges:\n        if not merged:\n            merged.append((cur_start, cur_end))\n        else:\n            last_start, last_end = merged[-1]\n            if cur_start <= last_end + 1:\n                merged[-1] = (last_start, max(last_end, cur_end))\n            else:\n                merged.append((cur_start, cur_end))\n    return merged\n```\n\n---\n\n### [04-topological-sort-heapq.md] (score=2)\n# Bài học 04: Sắp Xếp Topo Thứ Tự Build Theo Từ Điển (`resolve_build_order`)\n\n## Phân tích Lỗi của Student từ Log Baseline\nBài toán yêu cầu:\n1. Nếu `pkg` phụ thuộc vào `dep` (`dep in deps[pkg]`), thì `dep` PHẢI đứng trước `pkg` (cạnh có hướng: `dep -> pkg`).\n2. Các gói chỉ xuất hiện trong danh sách phụ thuộc (không phải key của `deps`) vẫn phải được đưa vào đồ thị.\n3. Có thể có cạnh trùng lặp trong danh sách phụ thuộc (ví dụ `'web': ['auth', 'auth']`) — cần loại bỏ trùng lặp bằng `set` để không tính sai bậc vào (`in_degree`).\n4. Khi nhiều gói cùng có `in_degree == 0`, luôn chọn gói có tên nhỏ nhất theo thứ tự từ điển bằng hàng đợi ưu tiên `heapq`.\n5. Nếu kết quả thu được có số đỉnh ít hơn tổng số đỉnh (`len(order) < len(all_nodes)`), đồ thị có chu trình $\\rightarrow$ trả về `'ERROR:CYCLE'`.\n\n## Thuật toán Kahn kết hợp `heapq`\n```python\nimport heapq\n\ndef resolve_build_order(deps: dict[str, list[str]]) -> list[str] | str:\n    if not deps:\n        return []\n\n    all_nodes: set[str] = set()\n    for pkg, reqs in deps.items():\n        all_nodes.add(pkg)\n        for r in reqs:\n            all_nodes.add(r)\n\n    adj: dict[str, set[str]] = {node: set() for node in all_nodes}\n    in_degree: dict[str, int] = {node: 0 for node in all_nodes}\n\n    for pkg, reqs in deps.items():\n        for r in set(reqs):\n            # r phải build trước pkg: cạnh r -> pkg\n            adj[r].add(pkg)\n            in_degree[pkg] += 1\n\n    heap: list[str] = [node for node, deg in in_degree.items() if deg == 0]\n    heapq.heapify(heap)\n\n    order: list[str] = []\n    while heap:\n        curr = heapq.heappop(heap)\n        order.append(curr)\n        for nxt in adj[curr]:\n            in_degree[nxt] -= 1\n            if in_degree[nxt] == 0:\n                heapq.heappush(heap, nxt)\n\n    if len(order) != len(all_nodes):\n        return \"ERROR:CYCLE\"\n    return order\n```\n\n[HƯỚNG DẪN BƯỚC TIẾP THEO]: Bạn đã tra cứu xong kho tri thức. Ở bước tiếp theo, KHÔNG gọi `search_knowledge` nữa; hãy viết code Python và gọi `test_code`."
+        },
+        {
+          "turn": 2,
+          "thought": "",
+          "tool_name": "test_code",
+          "tool_args": {
+            "code": "def merge_port_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:\n    sorted_ranges = sorted(ranges)\n    merged: list[tuple[int, int]] = []\n    for cur_start, cur_end in sorted_ranges:\n        if not merged:\n            merged.append((cur_start, cur_end))\n        else:\n            last_start, last_end = merged[-1]\n            if cur_start <= last_end + 1:\n                merged[-1] = (last_start, max(last_end, cur_end))\n            else:\n                merged.append((cur_start, cur_end))\n    return merged"
+          },
+          "observation": "PASS: Vượt qua toàn bộ 2/2 test cases.\n[HƯỚNG DẪN BƯỚC TIẾP THEO]: Sample tests đã PASS. Hãy gọi `submit_solution` để nộp đoạn code này."
+        },
+        {
+          "turn": 3,
+          "thought": "",
+          "tool_name": "submit_solution",
+          "tool_args": {
+            "code": "def merge_port_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:\n    sorted_ranges = sorted(ranges)\n    merged: list[tuple[int, int]] = []\n    for cur_start, cur_end in sorted_ranges:\n        if not merged:\n            merged.append((cur_start, cur_end))\n        else:\n            last_start, last_end = merged[-1]\n            if cur_start <= last_end + 1:\n                merged[-1] = (last_start, max(last_end, cur_end))\n            else:\n                merged.append((cur_start, cur_end))\n    return merged"
+          },
+          "observation": "Đã nhận bài nộp `submit_solution`."
+        }
+      ]
+    },
+    {
+      "task_id": "03_evaluate_rpn_safe",
+      "title": "Level 3 (Medium): Tính biểu thức hậu tố (RPN) an toàn",
+      "passed": true,
+      "passed_count": 7,
+      "total_count": 7,
+      "turns_used": 3,
+      "queried_knowledge": true,
+      "final_code": "def evaluate_rpn_safe(tokens: list[str]) -> int | str:\n    if not tokens:\n        return \"ERROR:INVALID\"\n    stack: list[int] = []\n    for token in tokens:\n        if token in ('+', '-', '*', '/'): \n            if len(stack) < 2:\n                return \"ERROR:INVALID\"\n            b = stack.pop()\n            a = stack.pop()\n            if token == '+':\n                stack.append(a + b)\n            elif token == '-':\n                stack.append(a - b)\n            elif token == '*':\n                stack.append(a * b)\n            else:\n                if b == 0:\n                    return \"ERROR:DIV_BY_ZERO\"\n                stack.append(int(a / b))\n        else:\n            digits = token[1:] if token.startswith(('+', '-')) else token\n            if not digits.isdigit():\n                return \"ERROR:INVALID\"\n            stack.append(int(token))\n    if len(stack) != 1:\n        return \"ERROR:INVALID\"\n    return stack[0]",
+      "failure_summary": "",
+      "steps": [
+        {
+          "turn": 1,
+          "thought": "",
+          "tool_name": "search_knowledge",
+          "tool_args": {
+            "query": "evaluate_rpn_safe"
+          },
+          "observation": "### [03-rpn-stack-evaluation.md] (score=17)\n# Bài học 03: Tính Biểu Thức Hậu Tố RPN An Toàn (`evaluate_rpn_safe`)\n\n## Phân tích Lỗi của Student từ Log Baseline\nTrong lần chạy baseline, Student mắc 3 lỗi nghiêm trọng:\n1. **Dùng `a // b` cho phép chia nguyên:** Trong Python, `-7 // 2` cho kết quả `-4` (làm tròn xuống $-\\infty$), trong khi đề bài yêu cầu làm tròn về 0 (`-7 / 2 -> -3`, `-13 / 5 -> -2`).\n   - **Cách sửa:** Dùng `int(a / b)` để chia nguyên làm tròn về 0!\n2. **Kiểm tra chia cho 0 sai vị trí:** Student kiểm tra `if stack[0] == 0` ở cuối hàm (khiến kết quả hợp lệ bằng 0 hoặc khác 0 bị nhầm thành `'ERROR:DIV_BY_ZERO'`), thay vì kiểm tra số chia `b == 0` NGAY TRƯỚC phép chia.\n   - **Cách sửa:** Khi `token == '/'`, kiểm tra `if b == 0: return 'ERROR:DIV_BY_ZERO'` trước khi tính `int(a / b)`.\n3. **Không bắt lỗi token lạ:** Gọi `int(token)` trực tiếp trên `'foo'` gây `ValueError`.\n\n## Quy trình Chuẩn cho `evaluate_rpn_safe`\n1. Nếu `not tokens`: trả về `'ERROR:INVALID'`.\n2. Duyệt từng `token` trong `tokens`:\n   - Nếu `token in ('+', '-', '*', '/')`:\n     - Nếu `len(stack) < 2`: trả về `'ERROR:INVALID'`.\n     - Lấy `b = stack.pop()`, sau đó `a = stack.pop()` (lưu ý thứ tự: `b` lấy ra trước, `a` lấy ra sau).\n     - Nếu `token == '/'`:\n       - Nếu `b == 0`: trả về `'ERROR:DIV_BY_ZERO'`.\n       - Tính `stack.append(int(a / b))`.\n     - Thực hiện tương tự cho `+`, `-`, `*`.\n   - Ngược lại (khi `token` là toán hạng):\n     - Kiểm tra xem `token` có phải chuỗi số nguyên hợp lệ không (`digits = token[1:] if token.startswith(('+', '-')) else token`). Nếu `not digits.isdigit()`: trả về `'ERROR:INVALID'`.\n     - Đẩy `int(token)` vào `stack`.\n3. Sau vòng lặp, nếu `len(stack) != 1`: trả về `'ERROR:INVALID'`.\n4. Trả về `stack[0]` (kể cả khi `stack[0] == 0` thì đó vẫn là kết quả số nguyên hợp lệ!).\n\n## Mẫu cài đặt tham khảo\n```python\ndef evaluate_rpn_safe(tokens: list[str]) -> int | str:\n    if not tokens:\n        return \"ERROR:INVALID\"\n    stack: list[int] = []\n    for token in tokens:\n        if token in (\"+\", \"-\", \"*\", \"/\"):\n            if len(stack) < 2:\n                return \"ERROR:INVALID\"\n            b = stack.pop()\n            a = stack.pop()\n            if token == \"+\":\n                stack.append(a + b)\n            elif token == \"-\":\n                stack.append(a - b)\n            elif token == \"*\":\n                stack.append(a * b)\n            else:\n                if b == 0:\n                    return \"ERROR:DIV_BY_ZERO\"\n                stack.append(int(a / b))\n        else:\n            digits = token[1:] if token.startswith((\"+\", \"-\")) else token\n            if not digits.isdigit():\n                return \"ERROR:INVALID\"\n            stack.append(int(token))\n    if len(stack) != 1:\n        return \"ERROR:INVALID\"\n    return stack[0]\n```\n\n[HƯỚNG DẪN BƯỚC TIẾP THEO]: Bạn đã tra cứu xong kho tri thức. Ở bước tiếp theo, KHÔNG gọi `search_knowledge` nữa; hãy viết code Python và gọi `test_code`."
+        },
+        {
+          "turn": 2,
+          "thought": "",
+          "tool_name": "test_code",
+          "tool_args": {
+            "code": "def evaluate_rpn_safe(tokens: list[str]) -> int | str:\n    if not tokens:\n        return \"ERROR:INVALID\"\n    stack: list[int] = []\n    for token in tokens:\n        if token in ('+', '-', '*', '/'): \n            if len(stack) < 2:\n                return \"ERROR:INVALID\"\n            b = stack.pop()\n            a = stack.pop()\n            if token == '+':\n                stack.append(a + b)\n            elif token == '-':\n                stack.append(a - b)\n            elif token == '*':\n                stack.append(a * b)\n            else:\n                if b == 0:\n                    return \"ERROR:DIV_BY_ZERO\"\n                stack.append(int(a / b))\n        else:\n            digits = token[1:] if token.startswith(('+', '-')) else token\n            if not digits.isdigit():\n                return \"ERROR:INVALID\"\n            stack.append(int(token))\n    if len(stack) != 1:\n        return \"ERROR:INVALID\"\n    return stack[0]"
+          },
+          "observation": "PASS: Vượt qua toàn bộ 2/2 test cases.\n[HƯỚNG DẪN BƯỚC TIẾP THEO]: Sample tests đã PASS. Hãy gọi `submit_solution` để nộp đoạn code này."
+        },
+        {
+          "turn": 3,
+          "thought": "",
+          "tool_name": "submit_solution",
+          "tool_args": {
+            "code": "def evaluate_rpn_safe(tokens: list[str]) -> int | str:\n    if not tokens:\n        return \"ERROR:INVALID\"\n    stack: list[int] = []\n    for token in tokens:\n        if token in ('+', '-', '*', '/'): \n            if len(stack) < 2:\n                return \"ERROR:INVALID\"\n            b = stack.pop()\n            a = stack.pop()\n            if token == '+':\n                stack.append(a + b)\n            elif token == '-':\n                stack.append(a - b)\n            elif token == '*':\n                stack.append(a * b)\n            else:\n                if b == 0:\n                    return \"ERROR:DIV_BY_ZERO\"\n                stack.append(int(a / b))\n        else:\n            digits = token[1:] if token.startswith(('+', '-')) else token\n            if not digits.isdigit():\n                return \"ERROR:INVALID\"\n            stack.append(int(token))\n    if len(stack) != 1:\n        return \"ERROR:INVALID\"\n    return stack[0]"
+          },
+          "observation": "Đã nhận bài nộp `submit_solution`."
+        }
+      ]
+    },
+    {
+      "task_id": "04_resolve_build_order",
+      "title": "Level 4 (Hard): Sắp xếp thứ tự build gói phụ thuộc (Topological Sort từ điển)",
+      "passed": true,
+      "passed_count": 6,
+      "total_count": 6,
+      "turns_used": 4,
+      "queried_knowledge": true,
+      "final_code": "import heapq\n\ndef resolve_build_order(deps: dict[str, list[str]]) -> list[str] | str:\n    if not deps:\n        return []\n\n    all_nodes: set[str] = set()\n    for pkg, reqs in deps.items():\n        all_nodes.add(pkg)\n        for r in reqs:\n            all_nodes.add(r)\n\n    adj: dict[str, set[str]] = {node: set() for node in all_nodes}\n    in_degree: dict[str, int] = {node: 0 for node in all_nodes}\n\n    for pkg, reqs in deps.items():\n        for r in set(reqs):\n            adj[r].add(pkg)\n            in_degree[pkg] += 1\n\n    heap: list[str] = [node for node, deg in in_degree.items() if deg == 0]\n    heapq.heapify(heap)\n\n    order: list[str] = []\n    while heap:\n        curr = heapq.heappop(heap)\n        order.append(curr)\n        for nxt in adj[curr]:\n            in_degree[nxt] -= 1\n            if in_degree[nxt] == 0:\n                heapq.heappush(heap, nxt)\n\n    if len(order) != len(all_nodes):\n        return 'ERROR:CYCLE'\n    return order",
+      "failure_summary": "",
+      "steps": [
+        {
+          "turn": 1,
+          "thought": "",
+          "tool_name": "search_knowledge",
+          "tool_args": {
+            "query": "resolve_build_order"
+          },
+          "observation": "### [04-topological-sort-heapq.md] (score=16)\n# Bài học 04: Sắp Xếp Topo Thứ Tự Build Theo Từ Điển (`resolve_build_order`)\n\n## Phân tích Lỗi của Student từ Log Baseline\nBài toán yêu cầu:\n1. Nếu `pkg` phụ thuộc vào `dep` (`dep in deps[pkg]`), thì `dep` PHẢI đứng trước `pkg` (cạnh có hướng: `dep -> pkg`).\n2. Các gói chỉ xuất hiện trong danh sách phụ thuộc (không phải key của `deps`) vẫn phải được đưa vào đồ thị.\n3. Có thể có cạnh trùng lặp trong danh sách phụ thuộc (ví dụ `'web': ['auth', 'auth']`) — cần loại bỏ trùng lặp bằng `set` để không tính sai bậc vào (`in_degree`).\n4. Khi nhiều gói cùng có `in_degree == 0`, luôn chọn gói có tên nhỏ nhất theo thứ tự từ điển bằng hàng đợi ưu tiên `heapq`.\n5. Nếu kết quả thu được có số đỉnh ít hơn tổng số đỉnh (`len(order) < len(all_nodes)`), đồ thị có chu trình $\\rightarrow$ trả về `'ERROR:CYCLE'`.\n\n## Thuật toán Kahn kết hợp `heapq`\n```python\nimport heapq\n\ndef resolve_build_order(deps: dict[str, list[str]]) -> list[str] | str:\n    if not deps:\n        return []\n\n    all_nodes: set[str] = set()\n    for pkg, reqs in deps.items():\n        all_nodes.add(pkg)\n        for r in reqs:\n            all_nodes.add(r)\n\n    adj: dict[str, set[str]] = {node: set() for node in all_nodes}\n    in_degree: dict[str, int] = {node: 0 for node in all_nodes}\n\n    for pkg, reqs in deps.items():\n        for r in set(reqs):\n            # r phải build trước pkg: cạnh r -> pkg\n            adj[r].add(pkg)\n            in_degree[pkg] += 1\n\n    heap: list[str] = [node for node, deg in in_degree.items() if deg == 0]\n    heapq.heapify(heap)\n\n    order: list[str] = []\n    while heap:\n        curr = heapq.heappop(heap)\n        order.append(curr)\n        for nxt in adj[curr]:\n            in_degree[nxt] -= 1\n            if in_degree[nxt] == 0:\n                heapq.heappush(heap, nxt)\n\n    if len(order) != len(all_nodes):\n        return \"ERROR:CYCLE\"\n    return order\n```\n\n[HƯỚNG DẪN BƯỚC TIẾP THEO]: Bạn đã tra cứu xong kho tri thức. Ở bước tiếp theo, KHÔNG gọi `search_knowledge` nữa; hãy viết code Python và gọi `test_code`."
+        },
+        {
+          "turn": 2,
+          "thought": "",
+          "tool_name": "test_code",
+          "tool_args": {
+            "code": "def resolve_build_order(deps: dict[str, list[str]]) -> list[str] | str:\n    if not deps:\n        return []\n\n    all_nodes: set[str] = set()\n    for pkg, reqs in deps.items():\n        all_nodes.add(pkg)\n        for r in reqs:\n            all_nodes.add(r)\n\n    adj: dict[str, set[str]] = {node: set() for node in all_nodes}\n    in_degree: dict[str, int] = {node: 0 for node in all_nodes}\n\n    for pkg, reqs in deps.items():\n        for r in set(reqs):\n            adj[r].add(pkg)\n            in_degree[pkg] += 1\n\n    heap: list[str] = [node for node, deg in in_degree.items() if deg == 0]\n    heapq.heapify(heap)\n\n    order: list[str] = []\n    while heap:\n        curr = heapq.heappop(heap)\n        order.append(curr)\n        for nxt in adj[curr]:\n            in_degree[nxt] -= 1\n            if in_degree[nxt] == 0:\n                heapq.heappush(heap, nxt)\n\n    if len(order) != len(all_nodes):\n        return 'ERROR:CYCLE'\n    return order"
+          },
+          "observation": "FAIL: Đạt 0/2 test cases.\nChi tiết lỗi:\n- Test #1 (thứ tự phụ thuộc và ưu tiên từ điển db trước ui): Gặp ngoại lệ NameError: name 'heapq' is not defined với args=({'app': ['ui', 'db'], 'ui': ['core'], 'db': ['core']},)\n- Test #2 (phát hiện chu trình 2 đỉnh): Gặp ngoại lệ NameError: name 'heapq' is not defined với args=({'a': ['b'], 'b': ['a']},)\n[HƯỚNG DẪN BƯỚC TIẾP THEO]: Hãy sửa lỗi trong code và gọi lại `test_code`."
+        },
+        {
+          "turn": 3,
+          "thought": "",
+          "tool_name": "test_code",
+          "tool_args": {
+            "code": "import heapq\n\ndef resolve_build_order(deps: dict[str, list[str]]) -> list[str] | str:\n    if not deps:\n        return []\n\n    all_nodes: set[str] = set()\n    for pkg, reqs in deps.items():\n        all_nodes.add(pkg)\n        for r in reqs:\n            all_nodes.add(r)\n\n    adj: dict[str, set[str]] = {node: set() for node in all_nodes}\n    in_degree: dict[str, int] = {node: 0 for node in all_nodes}\n\n    for pkg, reqs in deps.items():\n        for r in set(reqs):\n            adj[r].add(pkg)\n            in_degree[pkg] += 1\n\n    heap: list[str] = [node for node, deg in in_degree.items() if deg == 0]\n    heapq.heapify(heap)\n\n    order: list[str] = []\n    while heap:\n        curr = heapq.heappop(heap)\n        order.append(curr)\n        for nxt in adj[curr]:\n            in_degree[nxt] -= 1\n            if in_degree[nxt] == 0:\n                heapq.heappush(heap, nxt)\n\n    if len(order) != len(all_nodes):\n        return 'ERROR:CYCLE'\n    return order"
+          },
+          "observation": "PASS: Vượt qua toàn bộ 2/2 test cases.\n[HƯỚNG DẪN BƯỚC TIẾP THEO]: Sample tests đã PASS. Hãy gọi `submit_solution` để nộp đoạn code này."
+        },
+        {
+          "turn": 4,
+          "thought": "",
+          "tool_name": "submit_solution",
+          "tool_args": {
+            "code": "import heapq\n\ndef resolve_build_order(deps: dict[str, list[str]]) -> list[str] | str:\n    if not deps:\n        return []\n\n    all_nodes: set[str] = set()\n    for pkg, reqs in deps.items():\n        all_nodes.add(pkg)\n        for r in reqs:\n            all_nodes.add(r)\n\n    adj: dict[str, set[str]] = {node: set() for node in all_nodes}\n    in_degree: dict[str, int] = {node: 0 for node in all_nodes}\n\n    for pkg, reqs in deps.items():\n        for r in set(reqs):\n            adj[r].add(pkg)\n            in_degree[pkg] += 1\n\n    heap: list[str] = [node for node, deg in in_degree.items() if deg == 0]\n    heapq.heapify(heap)\n\n    order: list[str] = []\n    while heap:\n        curr = heapq.heappop(heap)\n        order.append(curr)\n        for nxt in adj[curr]:\n            in_degree[nxt] -= 1\n            if in_degree[nxt] == 0:\n                heapq.heappush(heap, nxt)\n\n    if len(order) != len(all_nodes):\n        return 'ERROR:CYCLE'\n    return order"
+          },
+          "observation": "Đã nhận bài nộp `submit_solution`."
+        }
+      ]
+    },
+    {
+      "task_id": "05_parse_cron_field",
+      "title": "Level 5 (Hard): Bộ phân tích biểu thức trường Cron",
+      "passed": true,
+      "passed_count": 8,
+      "total_count": 8,
+      "turns_used": 3,
+      "queried_knowledge": true,
+      "final_code": "def parse_cron_field(expr: str, min_val: int, max_val: int) -> list[int]:\n    if not expr or not expr.strip() or min_val > max_val:\n        raise ValueError(\"Empty or invalid bounds\")\n\n    values: set[int] = set()\n    for raw_part in expr.split(\",\"):\n        part = raw_part.strip()\n        if not part:\n            raise ValueError(\"Empty cron part\")\n\n        if '/' in part:\n            if part.count('/') > 1:\n                raise ValueError(\"Multiple slashes\")\n            base, step_str = part.split('/')\n            if not step_str.isdigit():\n                raise ValueError(\"Invalid step\")\n            step = int(step_str)\n            if step <= 0:\n                raise ValueError(\"Step must be > 0\")\n            if base != '*' and '-' not in base:\n                raise ValueError(\"Step not allowed on single value\")\n        else:\n            base = part\n            step = 1\n\n        if base == '*':\n            start, end = min_val, max_val\n        elif '-' in base:\n            if base.count('-') > 1:\n                raise ValueError(\"Invalid range\")\n            a_str, b_str = base.split('-')\n            if not (a_str.isdigit() and b_str.isdigit()):\n                raise ValueError(\"Range bounds must be digits\")\n            start, end = int(a_str), int(b_str)\n            if start > end or start < min_val or end > max_val:\n                raise ValueError(\"Range out of bounds\")\n        else:\n            if not base.isdigit():\n                raise ValueError(\"Invalid number\")\n            val = int(base)\n            if val < min_val or val > max_val:\n                raise ValueError(\"Value out of bounds\")\n            start = end = val\n\n        for x in range(start, end + 1, step):\n            values.add(x)\n\n    return sorted(values)",
+      "failure_summary": "",
+      "steps": [
+        {
+          "turn": 1,
+          "thought": "",
+          "tool_name": "search_knowledge",
+          "tool_args": {
+            "query": "parse_cron_field"
+          },
+          "observation": "### [05-cron-expression-parser.md] (score=18)\n# Bài học 05: Phân Tích Biểu Thức Trường Cron (`parse_cron_field`)\n\n## Phân tích Lỗi của Student từ Log Baseline\nBài toán yêu cầu phân tích chuỗi `expr` gồm các thành phần phân tách bởi dấu phẩy `,` trong miền `[min_val, max_val]`. Mọi lỗi cú pháp hoặc vượt biên đều phải `raise ValueError`.\n\n## Các Quy tắc Kiểm tra Hợp lệ (Validation Rules)\n1. Nếu `not expr` hoặc `not expr.strip()` hoặc `min_val > max_val`: `raise ValueError(\"Invalid expr\")`.\n2. Tách `parts = expr.split(\",\")`. Nếu có phần tử rỗng trong `parts` (ví dụ `\"1,,2\"`): `raise ValueError`.\n3. Với mỗi `part` trong `parts`:\n   - **Bước 3a (Tách `/step` nếu có):**\n     - Nếu `\"/\"` trong `part`:\n       - Nếu `part.count(\"/\") > 1`: `raise ValueError`.\n       - `base, step_str = part.split(\"/\")`\n       - Nếu `not step_str.isdigit()`: `raise ValueError` (loại cả số âm và chữ).\n       - `step = int(step_str)`\n       - Nếu `step <= 0`: `raise ValueError`.\n       - **Quan trọng:** Bước nhảy `/step` CHỈ áp dụng cho `base == \"*\"` hoặc khoảng `a-b` (`\"-\" in base`). Nếu `base` là một số đơn lẻ (như `\"5/2\"`), BẮT BUỘC `raise ValueError`!\n     - Nếu không có `\"/\"`:\n       - `base = part`\n       - `step = 1`\n   - **Bước 3b (Xác định khoảng `[start, end]` từ `base`):**\n     - Nếu `base == \"*\"`:\n       - `start, end = min_val, max_val`\n     - Nếu `\"-\" in base`:\n       - Nếu `base.count(\"-\") > 1`: `raise ValueError`.\n       - `a_str, b_str = base.split(\"-\")`\n       - Nếu `not (a_str.isdigit() and b_str.isdigit())`: `raise ValueError`.\n       - `start, end = int(a_str), int(b_str)`\n       - Nếu `start > end` hoặc `start < min_val` hoặc `end > max_val`: `raise ValueError`.\n     - Ngược lại (số đơn lẻ `n`):\n       - Nếu `not base.isdigit()`: `raise ValueError`.\n       - `val = int(base)`\n       - Nếu `val < min_val` hoặc `val > max_val`: `raise ValueError`.\n       - `start = end = val`\n   - **Bước 3c:** Thêm tất cả giá trị `range(start, end + 1, step)` vào một tập hợp `values: set[int]`.\n4. Trả về `sorted(values)`.\n\n## Mẫu cài đặt tham khảo\n```python\ndef parse_cron_field(expr: str, min_val: int, max_val: int) -> list[int]:\n    if not expr or not expr.strip() or min_val > max_val:\n        raise ValueError(\"Empty or invalid bounds\")\n\n    values: set[int] = set()\n    for raw_part in expr.split(\",\"):\n        part = raw_part.strip()\n        if not part:\n            raise ValueError(\"Empty cron part\")\n\n        if \"/\" in part:\n            if part.count(\"/\") > 1:\n                raise ValueError(\"Multiple slashes\")\n            base, step_str = part.split(\"/\")\n            if not step_str.isdigit():\n                raise ValueError(\"Invalid step\")\n            step = int(step_str)\n            if step <= 0:\n                raise ValueError(\"Step must be > 0\")\n            if base != \"*\" and \"-\" not in base:\n                raise ValueError(\"Step not allowed on single value\")\n        else:\n            base = part\n            step = 1\n\n        if base == \"*\":\n            start, end = min_val, max_val\n        elif \"-\" in base:\n            if base.count(\"-\") > 1:\n                raise ValueError(\"Invalid range\")\n            a_str, b_str = base.split(\"-\")\n            if not (a_str.isdigit() and b_str.isdigit()):\n                raise ValueError(\"Range bounds must be digits\")\n            start, end = int(a_str), int(b_str)\n            if start > end or start < min_val or end > max_val:\n                raise ValueError(\"Range out of bounds\")\n        else:\n            if not base.isdigit():\n                raise ValueError(\"Invalid number\")\n            val = int(base)\n            if val < min_val or val > max_val:\n                raise ValueError(\"Value out of bounds\")\n            start = end = val\n\n        for x in range(start, end + 1, step):\n            values.add(x)\n\n    return sorted(values)\n```\n\n[HƯỚNG DẪN BƯỚC TIẾP THEO]: Bạn đã tra cứu xong kho tri thức. Ở bước tiếp theo, KHÔNG gọi `search_knowledge` nữa; hãy viết code Python và gọi `test_code`."
+        },
+        {
+          "turn": 2,
+          "thought": "",
+          "tool_name": "test_code",
+          "tool_args": {
+            "code": "def parse_cron_field(expr: str, min_val: int, max_val: int) -> list[int]:\n    if not expr or not expr.strip() or min_val > max_val:\n        raise ValueError(\"Empty or invalid bounds\")\n\n    values: set[int] = set()\n    for raw_part in expr.split(\",\"):\n        part = raw_part.strip()\n        if not part:\n            raise ValueError(\"Empty cron part\")\n\n        if '/' in part:\n            if part.count('/') > 1:\n                raise ValueError(\"Multiple slashes\")\n            base, step_str = part.split('/')\n            if not step_str.isdigit():\n                raise ValueError(\"Invalid step\")\n            step = int(step_str)\n            if step <= 0:\n                raise ValueError(\"Step must be > 0\")\n            if base != '*' and '-' not in base:\n                raise ValueError(\"Step not allowed on single value\")\n        else:\n            base = part\n            step = 1\n\n        if base == '*':\n            start, end = min_val, max_val\n        elif '-' in base:\n            if base.count('-') > 1:\n                raise ValueError(\"Invalid range\")\n            a_str, b_str = base.split('-')\n            if not (a_str.isdigit() and b_str.isdigit()):\n                raise ValueError(\"Range bounds must be digits\")\n            start, end = int(a_str), int(b_str)\n            if start > end or start < min_val or end > max_val:\n                raise ValueError(\"Range out of bounds\")\n        else:\n            if not base.isdigit():\n                raise ValueError(\"Invalid number\")\n            val = int(base)\n            if val < min_val or val > max_val:\n                raise ValueError(\"Value out of bounds\")\n            start = end = val\n\n        for x in range(start, end + 1, step):\n            values.add(x)\n\n    return sorted(values)"
+          },
+          "observation": "PASS: Vượt qua toàn bộ 2/2 test cases.\n[HƯỚNG DẪN BƯỚC TIẾP THEO]: Sample tests đã PASS. Hãy gọi `submit_solution` để nộp đoạn code này."
+        },
+        {
+          "turn": 3,
+          "thought": "",
+          "tool_name": "submit_solution",
+          "tool_args": {
+            "code": "def parse_cron_field(expr: str, min_val: int, max_val: int) -> list[int]:\n    if not expr or not expr.strip() or min_val > max_val:\n        raise ValueError(\"Empty or invalid bounds\")\n\n    values: set[int] = set()\n    for raw_part in expr.split(\",\"):\n        part = raw_part.strip()\n        if not part:\n            raise ValueError(\"Empty cron part\")\n\n        if '/' in part:\n            if part.count('/') > 1:\n                raise ValueError(\"Multiple slashes\")\n            base, step_str = part.split('/')\n            if not step_str.isdigit():\n                raise ValueError(\"Invalid step\")\n            step = int(step_str)\n            if step <= 0:\n                raise ValueError(\"Step must be > 0\")\n            if base != '*' and '-' not in base:\n                raise ValueError(\"Step not allowed on single value\")\n        else:\n            base = part\n            step = 1\n\n        if base == '*':\n            start, end = min_val, max_val\n        elif '-' in base:\n            if base.count('-') > 1:\n                raise ValueError(\"Invalid range\")\n            a_str, b_str = base.split('-')\n            if not (a_str.isdigit() and b_str.isdigit()):\n                raise ValueError(\"Range bounds must be digits\")\n            start, end = int(a_str), int(b_str)\n            if start > end or start < min_val or end > max_val:\n                raise ValueError(\"Range out of bounds\")\n        else:\n            if not base.isdigit():\n                raise ValueError(\"Invalid number\")\n            val = int(base)\n            if val < min_val or val > max_val:\n                raise ValueError(\"Value out of bounds\")\n            start = end = val\n\n        for x in range(start, end + 1, step):\n            values.add(x)\n\n    return sorted(values)"
+          },
+          "observation": "Đã nhận bài nộp `submit_solution`."
+        }
+      ]
+    }
+  ]
+}
