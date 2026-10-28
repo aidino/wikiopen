@@ -1,281 +1,147 @@
-# 02. ReWOO and Plan-and-Execute: Decoupled Planning
+# ReWOO and Plan-and-Execute: Decoupled Planning (Lập kế hoạch tách rời thực thi)
 
-> **Nguồn bài học:** [AI Engineering From Scratch — Phase 14: Agent Engineering / 02. ReWOO and Plan-and-Execute](https://aiengineeringfromscratch.com/lesson?path=phases%2F14-agent-engineering%2F02-rewoo-plan-and-execute)
+> `ReAct` đan xen suy nghĩ (`thought`) và hành động (`action`) trong cùng một luồng xử lý (`stream`). `ReWOO` tách biệt hoàn toàn hai việc này: lập một kế hoạch tổng thể ngay từ đầu (`up front`), sau đó mới đem đi thực thi (`execute`). Kết quả: tốn ít hơn gấp 5 lần số `tokens`, tăng +4% độ chính xác (`accuracy`) trên bộ dữ liệu HotpotQA, và bạn có thể chưng cất (`distill`) bộ lập kế hoạch (`planner`) xuống một `model` nhỏ chỉ 7B tham số. `Plan-and-Execute` đã tổng quát hóa kiến trúc này; còn `Plan-and-Act` mở rộng quy mô (`scale`) của nó cho các tác vụ điều hướng web (`web navigation`).
 
----
+**Loại bài học (Type):** Build (Thực hành xây dựng)
+**Ngôn ngữ (Languages):** Python (`stdlib` — thư viện chuẩn)
+**Kiến thức tiên quyết (Prerequisites):** Phase 14 · 01 (Agent Loop)
+**Thời gian (Time):** ~60 phút
 
-## 1. Core Insights (Đúc kết cốt lõi)
+## Mục tiêu học tập (Learning Objectives)
 
-1. **Chi phí bậc hai ($\mathcal{O}(N^2)$) và sự mong manh của vòng lặp ReAct:**
-   Trong ReAct, mỗi bước gọi công cụ (tool call) phải mang theo toàn bộ lịch sử ngữ cảnh trước đó (`Thought 1 + Action 1 + Observation 1 + ... + Thought k`). Chiều dài prompt tại bước thứ $k$ tăng tuyến tính theo $k$, dẫn đến tổng số token tiêu thụ sau $N$ bước tăng theo hàm bậc hai $\mathcal{O}(N^2)$. Tệ hơn, khi một tool trả về lỗi ở giữa vòng lặp, mô hình phải vừa xử lý lỗi vừa suy luận lại toàn bộ kế hoạch ngay trong dòng chảy ngữ cảnh đang bị nhiễu.
-2. **Triết lý ReWOO (*Reasoning Without Observations* — Xu et al., 2023):**
-   Tách biệt hoàn toàn **Lập kế hoạch (Planning)** khỏi **Thực thi & Quan sát (Execution & Observation)**. Thay vì vừa đi vừa nghĩ từng bước, ReWOO thực hiện:
-   - **1 lần gọi LLM (Planner):** Lập toàn bộ đồ thị kế hoạch (Plan DAG) ngay từ đầu với các biến giữ chỗ bằng chứng (`#E1`, `#E2`, ...).
-   - **$N$ lần gọi Tool (Workers):** Thu thập bằng chứng theo thứ tự phụ thuộc (hoặc chạy song song các nhánh độc lập) mà không cần đính kèm chuỗi suy luận.
-   - **1 lần gọi LLM (Solver):** Tổng hợp câu trả lời cuối cùng từ câu hỏi gốc, kế hoạch và toàn bộ bằng chứng.
-3. **Tiết kiệm ~5x Token, tăng độ chính xác và mở khóa Planner Distillation:**
-   Trên bộ benchmark HotpotQA, ReWOO sử dụng **ít hơn ~5 lần token** nhưng đạt **+4% độ chính xác tuyệt đối** so với ReAct. Quan trọng hơn, vì `Planner` không bao giờ nhìn thấy `Observation` thực tế lúc lập kế hoạch, ta có thể **chưng cất (distill) kỹ năng lập kế hoạch từ mô hình 175B xuống mô hình nhỏ 7B**. Đây là nền tảng cho kiến trúc chuẩn năm 2026: dùng mô hình nhỏ chuyên biệt làm Planner kết hợp với mô hình lớn làm Solver/Executor (hoặc ngược lại).
-4. **Trục tiến hóa của Decoupled Planning (ReWOO → Plan-and-Execute → Plan-and-Act):**
-   - **ReWOO (05/2023):** Kế hoạch tĩnh dạng DAG; đánh đổi sự linh hoạt để lấy hiệu suất token tối đa và khả năng cô lập lỗi theo từng node.
-   - **Plan-and-Execute (08/2023 — LangChain):** Tổng quát hóa ReWOO bằng cách thêm một node **Replanner** tùy chọn sau khi thực thi một phần kế hoạch, đưa kết quả quan sát quay lại cập nhật kế hoạch khi cần thiết.
-   - **Plan-and-Act (ICML 2025 — Erdogan et al.):** Mở rộng lên các tác vụ dài hạn (**long-horizon > 30–50 bước** như điều hướng WebArena/Mobile) thông qua bộ sinh dữ liệu quỹ đạo kế hoạch tổng hợp (**synthetic plan data**), giúp mô hình giữ được tính mạch lạc ở độ sâu mà một chuỗi ReAct đơn lẻ bị mất phương hướng.
+- Giải thích tại sao việc tách thành 3 vai trò `Planner` / `Worker` / `Solver` của `ReWOO` lại giúp tiết kiệm `tokens` và tăng độ bền vững (`robustness`) so với vòng lặp đan xen (`interleaved loop`) của `ReAct`.
+- Tự cài đặt một đồ thị kế hoạch `plan DAG` (Directed Acyclic Graph — Đồ thị có hướng không chu trình), một bộ thực thi theo thứ tự phụ thuộc (`dependency-ordered executor`), và một bộ giải (`solver`) tổng hợp kết quả từ các `worker` — tất cả chỉ dùng thư viện chuẩn (`stdlib`).
+- Quyết định khi nào một tác vụ nên chạy theo kiểu lập-kế-hoạch-rồi-thực-thi (`plan-then-execute`) so với `ReAct` đan xen, dựa trên khung phân loại "5 mẫu workflow" (`five workflow patterns`) năm 2026 của Anthropic.
+- Nhận biết khi nào cần đến dữ liệu kế hoạch tổng hợp (`synthetic plan data`) của `Plan-and-Act` cho các tác vụ dài hơi (`long-horizon tasks`) trên web hoặc thiết bị di động (`mobile`).
 
----
+## Vấn đề (The Problem)
 
-## 2. Cơ chế ReWOO: Kiến trúc Ba Vai Trò (Planner – Workers – Solver)
+Vòng lặp đan xen `thought-action-observation` của `ReAct` tuy đơn giản và linh hoạt, nhưng mỗi lần gọi công cụ (`tool call`) đều phải mang theo toàn bộ ngữ cảnh trước đó (`full prior context`) — bao gồm tất cả những bước suy nghĩ (`thoughts`) cũ. Lượng `token` tiêu thụ tăng theo hàm bậc hai (`quadratically`) cùng với độ sâu của chuỗi bước chạy.
+*(Giải thích: Bước 1 gửi 100 token; bước 2 gửi lại 100 token bước 1 + 100 token mới = 200; bước 10 phải gửi lại toàn bộ lịch sử bước 1..9, nên tổng số token cộng dồn qua N bước tỷ lệ thuận với $1 + 2 + \dots + N \approx O(N^2)$).*
+Tệ hơn nữa: khi một `tool` bị lỗi ở giữa vòng lặp, `model` phải tự suy luận lại toàn bộ kế hoạch từ đầu dựa trên thông báo lỗi (`error observation`) đó.
 
-Được đề xuất bởi Xu et al. ([arXiv:2305.18323](https://arxiv.org/abs/2305.18323), 05/2023), ReWOO chia tách luồng xử lý của Agent thành 3 vai trò độc lập:
+`ReWOO` (*Reasoning Without Observation* — Suy luận không cần chờ kết quả quan sát, Xu và cộng sự, arXiv:2305.18323, tháng 5/2023) nhận ra điểm nghẽn này và đặt cược vào một hướng đi mới: **lên toàn bộ kế hoạch ngay từ đầu, thu thập dữ liệu bằng chứng (`evidence`) song song (`in parallel`), rồi tổng hợp câu trả lời ở bước cuối cùng.** Chỉ cần:
+- **1 lần gọi LLM** để lập kế hoạch (`plan`),
+- **N lần gọi `tool`** để lấy bằng chứng (có thể chạy song song),
+- **1 lần gọi LLM** để giải quyết và tổng hợp kết quả (`solve`).
 
-```text
-Planner:  user_question               --> [plan_dag]
-Workers:  [plan_dag]                  --> [evidence]     (gọi tool theo DAG, có thể song song)
-Solver:   user_question, plan_dag, evidence --> final_answer
+Sự đánh đổi (`trade-off`) ở đây là giảm tính linh hoạt (vì kế hoạch là tĩnh — `static plan`) để đổi lấy hiệu quả sử dụng `token` (`token efficiency`) vượt trội và khả năng khoanh vùng lỗi (`failure modes`) rõ ràng hơn rất nhiều.
+
+## Khái niệm cốt lõi (The Concept)
+
+### Ba vai trò tách biệt (The three roles)
+
+```
+Planner:  user_question -> [plan_dag]
+Workers:  [plan_dag]     -> [evidence]        (tool calls, possibly parallel)
+Solver:   user_question, plan_dag, evidence -> final_answer
 ```
 
-```mermaid
-flowchart LR
-    Q[User Question] --> P[1. Planner LLM]
-    P -->|Plan DAG| E1["Node #E1: search('capital of France')"]
-    P -->|Plan DAG| E2["Node #E2: search('population of #E1')"]
-    E1 -->|Output: 'Paris'| SUB[Reference Resolver]
-    SUB -->|Bind #E1 = 'Paris'| E2
-    E2 -->|Output: '11.2M metro'| E3["Node #E3: round_million('#E2')"]
-    E1 & E2 & E3 -->|Evidence Map| S[3. Solver LLM]
-    Q --> S
-    S --> A([Final Answer])
+- **`Planner` (Bộ lập kế hoạch):** Nhận câu hỏi của người dùng (`user_question`) và sinh ra một đồ thị `DAG` (`plan_dag`). Mỗi nút (`node`) trong đồ thị chỉ định tên một `tool`, các tham số (`arguments`) của nó, và những nút trước đó mà nó phụ thuộc vào thông qua các biến tham chiếu (`references` dạng placeholder như `#E1`, `#E2`).
+- **`Workers` (Các bộ thực thi công cụ):** Chạy các nút trong `DAG` theo thứ tự sắp xếp tô-pô (`topological order` — nút nào không phụ thuộc vào ai thì chạy trước hoặc chạy song song; nút nào cần kết quả của `#E1` thì đợi `#E1` chạy xong rồi điền kết quả thật vào chỗ `#E1`).
+- **`Solver` (Bộ tổng hợp kết quả):** Nhận câu hỏi ban đầu, bản kế hoạch `plan_dag`, cùng toàn bộ bằng chứng (`evidence`) thu được để ghép nối thành câu trả lời cuối cùng (`final_answer`).
+
+### Tại sao tiết kiệm gấp 5 lần token (Why 5x fewer tokens)
+
+Trong `ReAct`, độ dài `prompt` tăng tuyến tính theo số bước (`step count`). Ở bước thứ 10, `prompt` chứa `thought 1` + `action 1` + `observation 1` + `thought 2` + `action 2` + `observation 2`... cứ thế nối dài. Chưa kể mỗi bước trung gian đều phải gửi lặp lại phần `system prompt` và câu hỏi gốc một cách dư thừa (`redundantly`).
+
+Ngược lại, `ReWOO` chỉ phải trả chi phí cho:
+1. Một `planner prompt` (khá lớn),
+2. N `worker prompts` nhỏ gọn (hoặc chỉ là các lời gọi hàm trực tiếp không tốn chuỗi hội thoại dài),
+3. Một `solver prompt` cuối cùng.
+
+Trên bộ dữ liệu hỏi đáp đa bước HotpotQA, bài báo đo đạc được `ReWOO` tốn **ít hơn ~5 lần `tokens`** trong khi đạt độ chính xác tuyệt đối cao hơn **+4 điểm phần trăm** so với `ReAct`.
+
+### Tại sao kiến trúc này bền vững hơn (Why it is more robust)
+
+Nếu `worker 3` gặp lỗi trong `ReAct`, vòng lặp phải cố gắng suy luận để thoát khỏi lỗi đó ngay giữa dòng chảy (`mid-stream`), rất dễ dẫn đến việc model bị rối hoặc đi chệch hướng. Trong `ReWOO`, nếu `worker 3` trả về một chuỗi báo lỗi (`error string`), `Solver` ở bước cuối sẽ nhìn thấy lỗi đó đặt cạnh bản kế hoạch gốc (`original plan`) cùng các bằng chứng khác đã lấy thành công, từ đó có thể đưa ra câu trả lời giảm nhẹ hợp lý (`degrade gracefully` — trả lời phần làm được và nêu rõ phần thiếu). Việc khoanh vùng lỗi (`failure localization`) diễn ra độc lập trên từng nút (`per-node`), thay vì làm hỏng cả chuỗi bước (`per-step`).
+
+### Chưng cất bộ lập kế hoạch (Planner distillation)
+
+Kết quả quan trọng thứ hai của bài báo: bởi vì `Planner` không cần nhìn thấy kết quả thực thi trung gian (`observations`), bạn có thể tinh chỉnh (`fine-tune`) một `model` nhỏ cỡ 7B tham số dựa trên các bản kế hoạch đầu ra (`planner outputs`) được sinh bởi một `model` thầy (`teacher model`) khổng lồ cỡ 175B. Khi chạy thực tế (`at inference`), `model` nhỏ đảm nhận việc lập kế hoạch, không cần tốn chi phí gọi `model` lớn nữa. Đây hiện là tiêu chuẩn thiết kế phổ biến: rất nhiều `production agents` năm 2026 kết hợp một `small planner` với một `big executor` (hoặc ngược lại: model suy luận lớn lập kế hoạch một lần, rồi giao cho các model nhỏ/rẻ thực thi từng bước).
+
+### Plan-and-Execute (2023)
+
+Bài viết tháng 8/2023 của đội ngũ LangChain đã tổng quát hóa `ReWOO` thành một mẫu thiết kế (`pattern`) mang tên **Plan-and-Execute**:
+- Bộ `Planner` ở đầu vào phát ra một danh sách các bước (`step list`),
+- Bộ `Executor` chạy lần lượt từng bước,
+- Một bộ lập kế hoạch lại tùy chọn (`optional replanner`) có thể điều chỉnh lại các bước còn lại sau khi quan sát kết quả trung gian.
+
+Hướng tiếp cận này gần với `ReAct` hơn so với `ReWOO` thuần túy (vì `replanner` đưa `observations` quay trở lại quá trình lập kế hoạch), nhưng vẫn giữ được lợi thế tiết kiệm `token` đáng kể.
+
+### Plan-and-Act (Erdogan và cộng sự, arXiv:2503.09572, ICML 2025)
+
+`Plan-and-Act` mở rộng quy mô (`scale`) của mẫu thiết kế này cho các `web and mobile agents` thực hiện tác vụ dài hơi (`long-horizon`). Đóng góp cốt lõi của nghiên cứu này là **dữ liệu kế hoạch tổng hợp (`synthetic plan data`)**: một bộ sinh quỹ đạo có gán nhãn (`labeled trajectory generator`) tạo ra dữ liệu huấn luyện trong đó bản kế hoạch được tách bạch rõ ràng (`explicit`). Dữ liệu này được dùng để `fine-tune` các `planner models` có khả năng duy trì sự mạch lạc vượt qua 30–50 bước trên các tác vụ kiểu WebArena — nơi mà một quỹ đạo `ReAct` đơn lẻ thường bị mất phương hướng (`loses coherence`).
+
+### Khi nào nên chọn mẫu thiết kế nào (When to pick which)
+
+| Mẫu thiết kế (Pattern) | Khi nào nên sử dụng (When) |
+|---------|------|
+| **ReAct** | Tác vụ ngắn (`short tasks`), môi trường chưa biết trước (`unknown environment`), cần xử lý ngoại lệ tức thì (`reactive exception handling`) |
+| **ReWOO** | Tác vụ có cấu trúc rõ ràng với bộ công cụ đã biết (`known tools`), nhạy cảm về chi phí/số lượng `token` (`token-sensitive`), có thể thu thập bằng chứng song song (`parallelizable evidence`) |
+| **Plan-and-Execute** | Giống `ReWOO` nhưng cần khả năng lập lại kế hoạch (`replanning`) sau khi thực thi một phần công việc |
+| **Plan-and-Act** | Tác vụ dài hơi (`long-horizon` > 30 bước), điều khiển trình duyệt web / ứng dụng mobile / `computer-use` |
+| **Tree of Thoughts** | Bài toán khó mà việc bỏ chi phí tìm kiếm nhiều nhánh suy luận (`search`) là xứng đáng (Lesson 04) |
+
+**Lời khuyên từ Anthropic (tháng 12/2024):** Hãy luôn bắt đầu từ kiến trúc đơn giản nhất. Nếu tác vụ chỉ gồm 1 lệnh gọi `tool` cộng với bước tóm tắt, đừng phức tạp hóa bằng `ReWOO`. Ngược lại, nếu tác vụ là một bài nghiên cứu sâu gồm 40 bước, đừng chỉ dùng mỗi một vòng lặp `ReAct` đơn thuần.
+
+```figure
+rewoo-plan
 ```
 
-### Phân tích chi tiết 3 thành phần
+## Thực hành xây dựng (Build It)
 
-| Vai trò | Đầu vào (Input) | Đầu ra (Output) | Đặc điểm kỹ thuật cốt lõi |
-| :--- | :--- | :--- | :--- |
-| **1. Planner** | `user_question` + `tool_catalog` | Đồ thị kế hoạch không chu trình (**Plan DAG**) | Sinh danh sách các bước `(id, tool, args)`. Sử dụng ký hiệu tham chiếu bằng chứng như `#E1`, `#E2` để biểu diễn sự phụ thuộc dữ liệu giữa các bước mà chưa cần biết giá trị thực tế. |
-| **2. Workers** | `plan_dag` | Từ điển bằng chứng `evidence` (`{"E1": "...", "E2": "..."}`) | Thực thi các node theo thứ tự tô-pô (`topological order`). Tại thời điểm điều phối (dispatch time), bộ thực thi thay thế `#E<k>` bằng kết quả của worker trước đó. Các node cùng tầng không phụ thuộc nhau có thể chạy **song song**. |
-| **3. Solver** | `user_question` + `plan_dag` + `evidence` | `final_answer` | Ghép nối toàn bộ bằng chứng thu thập được với kế hoạch ban đầu để sinh câu trả lời hoàn chỉnh trong một lần gọi LLM duy nhất. |
+File `code/main.py` cài đặt một mô hình `ReWOO` thu nhỏ (`toy ReWOO`):
 
-### Tại sao ReWOO vượt trội ReAct trên các tác vụ có cấu trúc?
+- `Planner` — một chính sách theo kịch bản (`scripted policy`) sinh ra đồ thị `plan DAG` từ câu `prompt`.
+- `Worker` — điều phối (`dispatch`) lệnh gọi `tool` của từng nút thông qua `tool registry`.
+- `Solver` — bước tổng hợp đọc toàn bộ bằng chứng (`evidence`) và tạo ra câu trả lời cuối cùng (`final answer`).
+- Giải quyết phụ thuộc (`Dependency resolution`) — các biến tham chiếu như `#E1` được tự động thay thế (`substituted`) bằng kết quả đầu ra thực tế của `worker` chạy trước đó.
 
-1. **Hiệu quả Token (~5x Fewer Tokens):**
-   - Trong **ReAct**, ở bước thứ 10, prompt gửi lên LLM phải chứa lại toàn bộ: `Prompt gốc + (Thought 1 + Action 1 + Obs 1) + ... + (Thought 9 + Action 9 + Obs 9)`. Câu hỏi gốc và mọi suy luận trung gian bị lặp lại ở từng bước.
-   - Trong **ReWOO**, hệ thống chỉ tốn **1 prompt cho Planner**, **$N$ lệnh gọi tool nhỏ gọn** (chỉ truyền tham số hàm, không gánh lịch sử hội thoại), và **1 prompt cho Solver**.
-2. **Cô lập lỗi theo từng Node (Per-Node Failure Localization):**
-   - Trong **ReAct**, nếu bước 3 gọi tool bị lỗi, vòng lặp phải tự suy luận để thoát khỏi lỗi ngay giữa dòng chảy đang thực thi — rất dễ dẫn đến hiệu ứng dây chuyền hoặc quên mất mục tiêu ban đầu.
-   - Trong **ReWOO**, nếu Worker 3 gặp lỗi, nó chỉ đơn giản ghi nhận một chuỗi lỗi vào `evidence["E3"]`. Khi `Solver` chạy, nó nhìn thấy lỗi của `#E3` đặt trong bức tranh tổng thể của kế hoạch ban đầu và các bằng chứng `#E1`, `#E2` đã thành công, từ đó có thể **suy giảm êm dịu (degrade gracefully)** thay vì làm sập toàn bộ tiến trình.
-3. **Chưng cất Planner (Planner Distillation — 175B → 7B):**
-   - Vì Planner chỉ làm nhiệm vụ dịch `user_question` sang cấu trúc `Plan DAG` mà không bị phụ thuộc vào dữ liệu trả về muôn hình vạn trạng từ môi trường (`Observation`), bài toán lập kế hoạch trở nên gọn và đồng nhất hơn rất nhiều.
-   - Nhóm tác giả chứng minh có thể thu thập các trace kế hoạch từ mô hình Teacher 175B để fine-tune cho mô hình Student 7B. Khi chạy thực tế (inference), mô hình 7B đảm nhiệm việc lập kế hoạch với chất lượng tương đương mà không cần gọi mô hình khổng lồ ở bước đầu.
+Bản demo trả lời câu hỏi *"Dân số của thủ đô nước Pháp là bao nhiêu, làm tròn đến hàng triệu?"* ("What is the population of the capital of France, rounded to millions?") bằng một kế hoạch gồm 2 bước:
+1. Tra cứu thủ đô của Pháp (`#E1`),
+2. Tra cứu dân số của thành phố tìm được ở `#E1` (`#E2`),
+sau đó đưa vào `Solver` để giải.
 
----
+Chạy thử chương trình:
 
-## 3. Sự tiến hóa: Plan-and-Execute (2023) & Plan-and-Act (2025)
-
-### Plan-and-Execute (LangChain, 08/2023)
-
-Nhược điểm lớn nhất của ReWOO thuần túy là **kế hoạch tĩnh (static plan)**: nếu kết quả của `#E1` làm thay đổi hoàn toàn hướng đi tiếp theo, DAG ban đầu sẽ không còn phù hợp.
-
-Mẫu **Plan-and-Execute** giải quyết điểm này bằng cách:
-1. **Planner** lập danh sách các bước ban đầu.
-2. **Executor** thực thi từng bước (hoặc từng nhóm bước).
-3. **Replanner (Tùy chọn):** Quan sát kết quả thực thi vừa rồi để quyết định giữ nguyên phần còn lại của kế hoạch, chỉnh sửa các bước tiếp theo, hoặc kết thúc sớm.
-
-> **Bản chất:** Plan-and-Execute đưa `Observation` quay trở lại khâu lập kế hoạch thông qua Replanner (gần với ReAct hơn so với ReWOO thuần túy), nhưng vẫn giữ được lợi thế tiết kiệm token nhờ không phải suy luận lại từ đầu ở mọi thao tác nhỏ.
-
-### Plan-and-Act (Erdogan et al., ICML 2025 — [arXiv:2503.09572](https://arxiv.org/abs/2503.09572))
-
-Khi áp dụng vào các tác vụ điều hướng web hoặc di động dài hạn (**long-horizon tasks**, kéo dài 30–50+ bước trên các môi trường như WebArena), một quỹ đạo ReAct đơn lẻ thường bị mất tính mạch lạc (lose coherence), trong khi dữ liệu huấn luyện cho Planner chất lượng cao lại rất khan hiếm.
-
-Đóng góp cốt lõi của **Plan-and-Act**:
-- Tách bạch rõ ràng hai mô hình **Planner** (lập kế hoạch cấp cao) và **Executor** (ánh xạ từng bước kế hoạch thành thao tác cụ thể trên giao diện).
-- Xây dựng **Synthetic Plan Data Generator** (bộ sinh dữ liệu kế hoạch tổng hợp): tự động trích xuất và gán nhãn các kế hoạch tường minh từ các quỹ đạo hành động có sẵn, dùng để fine-tune các mô hình Planner có khả năng duy trì định hướng bền bỉ qua 30–50 bước.
-
-### Bảng quyết định: Khi nào chọn mẫu kiến trúc nào?
-
-| Mẫu thiết kế (Pattern) | Khi nào nên sử dụng (When to pick) | Đặc trưng cốt lõi |
-| :--- | :--- | :--- |
-| **ReAct** | Tác vụ ngắn (< 3 bước), môi trường chưa biết trước, cần phản ứng tức thời với ngoại lệ | Đan xen `Thought → Action → Observation` trong 1 luồng duy nhất. |
-| **ReWOO** | Tác vụ có cấu trúc rõ ràng, bộ công cụ xác định, nhạy cảm về chi phí token, có thể lấy bằng chứng song song | Kế hoạch tĩnh dạng DAG (`Planner → Workers → Solver`), không có observation trong lúc lập kế hoạch. |
-| **Plan-and-Execute** | Tương tự ReWOO nhưng kết quả trung gian có thể làm thay đổi các bước phía sau | Có thêm nút **Replanner** đánh giá lại kế hoạch sau khi thực thi từng phần. |
-| **Plan-and-Act** | Tác vụ đường dài (**> 30 bước**), điều khiển trình duyệt web / mobile / computer-use | Tách Planner/Executor kết hợp huấn luyện bằng **dữ liệu kế hoạch tổng hợp (synthetic plans)**. |
-| **Tree of Thoughts / LATS** | Bài toán đòi hỏi tìm kiếm, thử-sai và quay lui (backtracking) đáng để đánh đổi chi phí | Duyệt cây trạng thái (sẽ học ở Bài 04). |
-
-> **Nguyên tắc thực chiến từ Anthropic (*Building Effective Agents*, 12/2024):** Luôn bắt đầu từ giải pháp đơn giản nhất. Nếu tác vụ chỉ gồm 1 lệnh gọi tool kèm bước tóm tắt, **đừng dựng ReWOO**. Ngược lại, nếu tác vụ là một bài toán nghiên cứu sâu kéo dài 40 bước, **đừng chỉ dùng ReAct đơn lẻ**.
-
-### Ứng dụng trong các Framework hiện đại
-- **LangGraph:** Cung cấp sẵn công thức kiến trúc Plan-and-Execute bằng đồ thị trạng thái (tách biệt với `create_react_agent` dùng cho ReAct).
-- **CrewAI Flows:** Mã hóa trực tiếp mẫu thiết kế này — kỹ sư định nghĩa các bước công việc từ đầu và bộ điều phối Flow DAG thực thi chúng theo đúng phụ thuộc.
-
----
-
-## 4. Tiêu chuẩn Kiểm định Kế hoạch (Plan DAG Validation & Guardrails)
-
-Trong hệ thống Production (đúc kết từ `skill-rewoo-planner.md`), một Plan DAG do LLM sinh ra **không bao giờ được chuyển thẳng cho Worker** nếu chưa vượt qua 4 bước kiểm định tĩnh (Static Validation):
-
-1. **Kiểm tra tính không chu trình (Acyclicity Check):**
-   Chạy thuật toán sắp xếp tô-pô (`topological sort`). Nếu phát hiện chu trình (cycle) → **Từ chối cứng (Hard reject)**. ReWOO bắt buộc là một DAG; các vòng lặp thuộc về phạm vi của ReAct hoặc LATS.
-2. **Kiểm tra phân giải tham chiếu (Reference Resolution Check):**
-   Mọi biến giữ chỗ `#E<k>` nằm trong tham số của một bước phải trỏ tới một node `Ek` đã được định nghĩa và đứng **trước nó** trong thứ tự tô-pô. Nếu tham chiếu tới node chưa tồn tại hoặc đứng sau, hệ thống phải chỉ rõ cạnh phụ thuộc bị lỗi.
-3. **Kiểm tra sự tồn tại của Tool (Tool Existence Check):**
-   Mọi tên tool trong kế hoạch phải nằm trong `tool_catalog`. Tuyệt đối không cho phép Planner tự bịa (hallucinate) tên công cụ không tồn tại để ép kế hoạch có vẻ hợp lý.
-4. **Kiểm tra Schema & Kiểu dữ liệu (Arg Schema Check):**
-   Từng tham số truyền vào phải khớp với schema đầu vào của tool (bao gồm cả kiểu dữ liệu sau khi thay thế chuỗi `#E<k>`).
-5. **Quy tắc từ chối an toàn (Refusal Rules):**
-   - Nếu bài toán mang tính khám phá mở (chưa biết trước cần dùng những tool nào hay gồm bao nhiêu bước) → Từ chối lập kế hoạch tĩnh và chuyển hướng sang **ReAct** hoặc **LATS**.
-   - Nếu `tool_catalog` chứa các công cụ có tính phá hủy (destructive tools) nhưng không có công cụ cổng phê duyệt (approval gate) → Từ chối thực thi và yêu cầu bổ sung cơ chế phân quyền/sandbox (Bài 09).
-
----
-
-## 5. Kiến trúc tham chiếu (Minimal Python Reference)
-
-Đoạn mã dưới đây (trích từ `code/main.py`, chỉ sử dụng Python `stdlib`) minh họa trọn vẹn cách cài đặt ReWOO gồm: phân giải tham chiếu `#E<k>`, sắp xếp tô-pô cho DAG, thực thi Workers, tổng hợp bằng Solver và đo lường đối chiếu chi phí ký tự với ReAct:
-
-```python
-from __future__ import annotations
-
-import re
-from dataclasses import dataclass, field
-from typing import Any, Callable
-
-@dataclass
-class PlanStep:
-    id: str
-    tool: str
-    args: dict[str, Any]
-
-@dataclass
-class Plan:
-    steps: list[PlanStep]
-
-class ToolRegistry:
-    def __init__(self) -> None:
-        self._tools: dict[str, Callable[..., str]] = {}
-
-    def register(self, name: str, fn: Callable[..., str]) -> None:
-        self._tools[name] = fn
-
-    def dispatch(self, name: str, args: dict[str, Any]) -> str:
-        fn = self._tools.get(name)
-        if fn is None:
-            return f"error: unknown tool {name!r}"
-        try:
-            return fn(**args)
-        except Exception as e:
-            return f"error: {type(e).__name__}: {e}"
-
-REFERENCE_RE = re.compile(r"#E(\d+)")
-
-def resolve_references(value: Any, evidence: dict[str, str]) -> Any:
-    """Thay thế các placeholder #E1, #E2 bằng kết quả thực tế từ các Worker trước đó."""
-    if not isinstance(value, str):
-        return value
-    return REFERENCE_RE.sub(
-        lambda m: evidence.get(f"E{m.group(1)}", m.group(0)),
-        value,
-    )
-
-def topological(plan: Plan) -> list[PlanStep]:
-    """Sắp xếp các bước trong Plan DAG theo thứ tự phụ thuộc; báo lỗi nếu có chu trình."""
-    resolved: list[PlanStep] = []
-    known: set[str] = set()
-    pending = list(plan.steps)
-    while pending:
-        progress = False
-        rest: list[PlanStep] = []
-        for step in pending:
-            refs = REFERENCE_RE.findall(str(step.args))
-            if all(f"E{r}" in known for r in refs):
-                resolved.append(step)
-                known.add(step.id)
-                progress = True
-            else:
-                rest.append(step)
-        if not progress:
-            raise RuntimeError("cyclic plan or unresolved reference")
-        pending = rest
-    return resolved
-
-def run_workers(plan: Plan, tools: ToolRegistry) -> dict[str, str]:
-    """Thực thi từng bước theo thứ tự tô-pô và thu thập bằng chứng (evidence)."""
-    evidence: dict[str, str] = {}
-    for step in topological(plan):
-        bound_args = {k: resolve_references(v, evidence) for k, v in step.args.items()}
-        evidence[step.id] = tools.dispatch(step.tool, bound_args)
-    return evidence
-
-@dataclass
-class ReWOORun:
-    question: str
-    plan: Plan
-    evidence: dict[str, str] = field(default_factory=dict)
-    answer: str = ""
-    planner_chars: int = 0
-    worker_chars: int = 0
-    solver_chars: int = 0
-
-def run_rewoo(question: str, planner: Any, tools: ToolRegistry, solver: Any) -> ReWOORun:
-    # 1. Planner: 1 lần gọi để sinh toàn bộ Plan DAG
-    plan = planner.plan_for(question)
-    planner_chars = len(question) + sum(len(s.tool) + len(str(s.args)) for s in plan.steps)
-
-    # 2. Workers: Thực thi các node theo DAG (không gánh lịch sử suy luận)
-    evidence = run_workers(plan, tools)
-    worker_chars = sum(len(str(s.args)) + len(v) for s, v in zip(plan.steps, evidence.values()))
-
-    # 3. Solver: 1 lần gọi để tổng hợp câu trả lời cuối cùng
-    answer = solver.solve(question, plan, evidence)
-    solver_chars = len(question) + worker_chars + len(answer)
-
-    return ReWOORun(
-        question=question, plan=plan, evidence=evidence, answer=answer,
-        planner_chars=planner_chars, worker_chars=worker_chars, solver_chars=solver_chars,
-    )
+```
+python3 code/main.py
 ```
 
-**Ví dụ luồng chạy thực tế cho câu hỏi:** *"What is the population of the capital of France, rounded?"*
-- **Plan DAG:**
-  - `E1`: `search(query="capital of France")`
-  - `E2`: `search(query="population of #E1")`
-  - `E3`: `round_million(text="#E2")`
-- **Evidence thu thập được:** `E1 -> "Paris"`, `E2 -> "11.2 million metro"`, `E3 -> "11 million"`.
-- **Final Answer (Solver):** `"The capital of France is Paris; rounded population is 11 million."`
+Bản ghi vết (`trace`) sẽ hiển thị toàn bộ bản kế hoạch trước tiên, tiếp theo là kết quả của từng `worker`, và cuối cùng là bước tổng hợp của `solver`. Hãy so sánh số lượng `token` (chương trình có in ra số lượng ký tự ước tính) với cách chạy đan xen kiểu `ReAct` — `ReWOO` chiến thắng rõ rệt trên dạng tác vụ có cấu trúc như thế này.
 
----
+## Ứng dụng thực tế (Use It)
 
-## 6. Bảng thuật ngữ cốt lõi (Key Terms)
+LangGraph cung cấp sẵn `Plan-and-Execute` như một công thức chuẩn (`recipe` — dùng `create_react_agent` cho `ReAct`, và xây dựng đồ thị tùy chỉnh `custom graphs` cho `plan-execute`). Tính năng `Flows` của CrewAI cũng mã hóa trực tiếp mẫu thiết kế này: bạn định nghĩa các tác vụ ngay từ đầu và đồ thị `Flow DAG` sẽ thực thi chúng. Hướng tiếp cận dùng `synthetic data` của `Plan-and-Act` hiện vẫn chủ yếu nằm ở mảng nghiên cứu, nhưng mẫu kiến trúc thực thi (`runtime pattern` — tức `explicit plan DAG`) đã được ứng dụng rộng rãi trong `production` thông qua LangGraph và CrewAI Flows.
 
-| Thuật ngữ | Cách gọi thông thường | Bản chất kỹ thuật thực sự |
-| :--- | :--- | :--- |
-| **ReWOO** | "Reasoning without observations" | Lập kế hoạch toàn cục trước, thu thập bằng chứng (có thể song song), sau đó giải quyết ở bước cuối — không có `Observation` nào xuất hiện trong prompt lập kế hoạch. |
-| **Plan-and-Execute** | "Mẫu plan-execute của LangChain" | Biến thể tổng quát hóa của ReWOO có kèm thêm một node **Replanner** tùy chọn sau khi thực thi. |
-| **Plan-and-Act** | "Scaled plan-execute" | Tách biệt tường minh Planner/Executor kết hợp huấn luyện bằng **dữ liệu kế hoạch tổng hợp (synthetic plan data)** cho các tác vụ dài hạn (> 30 bước). |
-| **Evidence reference** | "`#E1`, `#E2`, ..." | Biến giữ chỗ (placeholder) trong node kế hoạch, được bộ điều phối thay thế bằng đầu ra thực tế của worker đứng trước tại thời điểm chạy. |
-| **Planner distillation** | "Small planner, big executor" | Kỹ thuật fine-tune một mô hình nhỏ (~7B) trên các vết kế hoạch (planner traces) sinh bởi mô hình Teacher lớn (~175B). |
-| **Token efficiency** | "Ít vòng lặp gọi model hơn" | Giảm ~5 lần lượng token tiêu thụ trên HotpotQA so với ReAct nhờ loại bỏ việc lặp lại chuỗi suy luận qua từng bước. |
-| **DAG executor** | "Topological dispatcher" | Bộ điều phối chạy các node kế hoạch theo thứ tự phụ thuộc tô-pô và thực thi song song các node độc lập ở cùng một tầng. |
+## Đóng gói kỹ năng (Ship It)
 
----
+File `outputs/skill-rewoo-planner.md` giúp sinh ra một đồ thị kế hoạch `ReWOO plan DAG` từ yêu cầu của người dùng dựa trên danh mục công cụ (`tool catalog`) cho trước. Nó tự động kiểm tra tính hợp lệ (`validate`) của bản kế hoạch (đảm bảo đồ thị không có chu trình lặp `acyclic`, mọi tham chiếu `#E...` đều được giải quyết, và mọi `tool` được gọi đều tồn tại) trước khi bàn giao cho bộ thực thi (`executor`).
 
-## 7. Câu hỏi tự luyện & Mở rộng (Exercises & Quiz Takeaways)
+## Bài tập rèn luyện (Exercises)
 
-1. **Thực thi song song các nhánh độc lập trong DAG (Parallel Worker Execution):**
-   - Thay vì trả về danh sách phẳng `list[PlanStep]`, hàm `topological()` có thể gom nhóm các node có cùng bậc phụ thuộc vào từng tầng `list[list[PlanStep]]` (topological levels/generations).
-   - Trên một DAG gồm 6 node chia làm 2 nhóm song song (mỗi nhóm 3 node chạy đồng thời), độ trễ (wall-clock latency) của bước thu thập bằng chứng giảm từ tổng thời gian của 6 lần gọi tool tuần tự xuống chỉ còn thời gian của **2 tầng chậm nhất**, trong khi tổng số token không đổi.
-2. **Thay đổi nhỏ nhất để biến ReWOO thành Plan-and-Execute:**
-   - Giữ nguyên `Planner` và `Workers`, nhưng kiểm tra từ điển `evidence` sau khi thực thi từng bước (hoặc từng tầng): nếu bất kỳ worker nào trả về chuỗi bắt đầu bằng `"error:"`, kích hoạt một node `Replanner(question, completed_evidence, failed_step)` để phát sinh phần DAG thay thế cho các bước còn lại trước khi đưa vào `Solver`.
-3. **Kiến trúc Hybrid (`7B Planner` + `Frontier Solver`) và điểm gãy (Failure Modes):**
-   - **Ưu điểm:** Giảm mạnh độ trễ và chi phí của bước lập kế hoạch ban đầu; mô hình lớn ở tầng `Solver` vẫn đảm bảo chất lượng tổng hợp ngôn ngữ và suy luận trên bằng chứng thu được.
-   - **Điểm gãy:** Nếu câu hỏi đầu vào đòi hỏi suy luận ẩn dụ phức tạp để chọn đúng tool hoặc phân rã phụ thuộc nhiều tầng chưa từng xuất hiện trong tập dữ liệu chưng cất, mô hình 7B có thể sinh ra DAG thiếu bước hoặc nối sai tham chiếu `#E<k>`. Khi một nhánh bằng chứng bị thiếu từ gốc, dù `Solver` mạnh đến đâu cũng không thể tự gọi thêm tool để bù đắp (trừ khi có cơ chế fallback sang Replanner).
-4. **Chưng cất Planner (175B → 7B) cần dữ liệu và thước đo gì?**
-   - **Dữ liệu huấn luyện:** Các cặp `(user_question + tool_catalog, valid_plan_dag)` từ mô hình Teacher 175B, được lọc giữ lại những quỹ đạo mà sau khi thực thi và qua Solver cho ra đáp án đúng chuẩn (execution-verified trajectories).
-   - **Thước đo chất lượng kế hoạch (Plan Scoring):** Tỉ lệ DAG hợp lệ về mặt cú pháp/không chu trình (syntactic validity), độ chính xác của chuỗi gọi tool và tham chiếu (graph edit distance / tool recall), và độ chính xác của câu trả lời cuối cùng khi giữ cố định cùng một Solver (downstream Exact Match / F1).
-5. **Đánh đổi khi chuyển từ DAG (ReWOO) sang Chuỗi tuần tự (Plan-and-Act Sequence):**
-   - Biểu diễn kế hoạch dưới dạng danh sách tuần tự (sequence) giúp việc sinh dữ liệu tổng hợp và huấn luyện tự hồi quy (autoregressive fine-tuning) trên các tác vụ điều hướng UI/Web dài hạn trở nên đơn giản, tự nhiên hơn.
-   - Đánh đổi lại, hệ thống mất đi thông tin phụ thuộc tường minh giữa các nhánh độc lập, không thể tự động hóa việc chạy song song nhiều nhánh tool cùng lúc như cấu trúc DAG của ReWOO.
+1. Song song hóa (`parallelize`) quá trình thực thi `worker` cho các nút kế hoạch độc lập (không phụ thuộc lẫn nhau). Điều này mang lại lợi ích gì về thời gian chạy (`latency`) trên một đồ thị `DAG` gồm 6 nút được chia làm 2 nhóm song song?
+2. Thêm một nút lập lại kế hoạch (`replanner node`) chỉ kích hoạt nếu có bất kỳ `worker` nào trả về lỗi. Thay đổi nhỏ nhất đối với `ReWOO` để biến nó thành `Plan-and-Execute` là gì?
+3. Thay thế `Planner` bằng một `model` nhỏ (nhóm 7B tham số) và giữ `Solver` trên một `frontier model` (model lớn hàng đầu). So sánh chất lượng đầu-cuối (`end-to-end quality`) — kiến trúc tách đôi này thường thất bại ở điểm nào?
+4. Đọc Mục 4 (Section 4) của bài báo `ReWOO` về chưng cất bộ lập kế hoạch (`planner distillation`). Hãy tái hiện lại về mặt ý tưởng kết quả chuyển giao từ `175B -> 7B`: bạn cần dữ liệu huấn luyện (`training data`) gì, và làm thế nào để chấm điểm chất lượng của một bản kế hoạch (`plan quality`)?
+5. Chuyển đổi (`port`) bản code mẫu sang hình thái quỹ đạo (`trajectory shape`) của `Plan-and-Act`: trong đó kế hoạch là một chuỗi tuần tự (`sequence`) chứ không phải đồ thị `DAG`. Những sự đánh đổi (`tradeoffs`) nào sẽ thay đổi?
 
----
+## Thuật ngữ quan trọng (Key Terms)
 
-## 8. Tài liệu tham khảo chọn lọc
+| Thuật ngữ (Term) | Cách người ta thường gọi (What people say) | Bản chất thực sự (What it actually means) |
+|------|----------------|------------------------|
+| **ReWOO** | "Suy luận không cần quan sát" ("Reasoning without observations") | Lập kế hoạch trước, sau đó thu thập bằng chứng song song, rồi mới giải quyết — không đưa `observations` vào trong `planning prompt` |
+| **Plan-and-Execute** | "Mẫu plan-execute của LangChain" ("LangChain's plan-execute pattern") | Kiến trúc `ReWOO` có gắn thêm một nút `replanner` tùy chọn sau bước thực thi |
+| **Plan-and-Act** | "Plan-execute mở rộng quy mô" ("Scaled plan-execute") | Tách biệt rõ `planner`/`executor` kết hợp dữ liệu huấn luyện kế hoạch tổng hợp (`synthetic plan training data`) cho các tác vụ dài hơi (`long-horizon tasks`) |
+| **Evidence reference** | "`#E1`, `#E2`, ..." | Biến giữ chỗ (`placeholder`) ở nút kế hoạch, sẽ được thay thế bằng kết quả thực tế của `worker` trước đó ngay tại thời điểm điều phối (`dispatch time`) |
+| **Planner distillation** | "Planner nhỏ, Executor lớn" ("Small planner, big executor") | Tinh chỉnh (`fine-tune`) một `model` nhỏ dựa trên các vết lập kế hoạch (`planner traces`) sinh ra từ một `teacher model` lớn |
+| **Token efficiency** | "Ít vòng gọi qua lại hơn" ("Fewer round trips") | Tiết kiệm gấp 5 lần số `tokens` trên bộ dữ liệu HotpotQA so với `ReAct` theo kết quả bài báo |
+| **DAG executor** | "Bộ điều phối tô-pô" ("Topological dispatcher") | Chạy các nút trong kế hoạch theo đúng thứ tự phụ thuộc (`dependency order`); các nút cùng cấp không phụ thuộc nhau được chạy song song |
 
-- [Xu et al. — ReWOO: Decoupling Reasoning from Observations for Efficient Augmented Language Models (arXiv:2305.18323)](https://arxiv.org/abs/2305.18323) *(Bài báo gốc về kiến trúc Planner – Worker – Solver và Planner Distillation)*
-- [Erdogan et al. — Plan-and-Act: Improving Planning of Agents for Long-Horizon Tasks (arXiv:2503.09572, ICML 2025)](https://arxiv.org/abs/2503.09572) *(Mở rộng mô hình Planner–Executor cho tác vụ dài hạn bằng dữ liệu kế hoạch tổng hợp)*
-- [LangGraph — Plan-and-Execute Overview & Recipe](https://docs.langchain.com/oss/python/langgraph/overview) *(Triển khai mẫu Plan-and-Execute trên đồ thị trạng thái)*
-- [Anthropic — Building Effective Agents (12/2024)](https://www.anthropic.com/research/building-effective-agents) *(Nguyên tắc chọn mẫu workflow đơn giản nhất phù hợp với độ phức tạp của tác vụ)*
+## Đọc thêm (Further Reading)
+
+- [Xu et al., ReWOO: Decoupling Reasoning from Observations (arXiv:2305.18323)](https://arxiv.org/abs/2305.18323) — bài báo khoa học nền tảng (`canonical paper`)
+- [Erdogan et al., Plan-and-Act (arXiv:2503.09572)](https://arxiv.org/abs/2503.09572) — mở rộng quy mô `planner-executor` bằng dữ liệu kế hoạch tổng hợp (`synthetic plans`)
+- [LangGraph Plan-and-Execute tutorial](https://docs.langchain.com/oss/python/langgraph/overview) — công thức cài đặt trên `framework` LangGraph
+- [Anthropic, Building Effective Agents](https://www.anthropic.com/research/building-effective-agents) — nguyên tắc chọn mẫu thiết kế đơn giản nhất mà giải quyết được việc
