@@ -2,10 +2,10 @@
 
 > `ReAct` đan xen suy nghĩ (`thought`) và hành động (`action`) trong cùng một luồng xử lý (`stream`). `ReWOO` tách biệt hoàn toàn hai việc này: lập một kế hoạch tổng thể ngay từ đầu (`up front`), sau đó mới đem đi thực thi (`execute`). Kết quả: tốn ít hơn gấp 5 lần số `tokens`, tăng +4% độ chính xác (`accuracy`) trên bộ dữ liệu HotpotQA, và bạn có thể chưng cất (`distill`) bộ lập kế hoạch (`planner`) xuống một `model` nhỏ chỉ 7B tham số. `Plan-and-Execute` đã tổng quát hóa kiến trúc này; còn `Plan-and-Act` mở rộng quy mô (`scale`) của nó cho các tác vụ điều hướng web (`web navigation`).
 
-**Loại bài học (Type):** Build (Thực hành xây dựng)
-**Ngôn ngữ (Languages):** Python (`stdlib` — thư viện chuẩn)
-**Kiến thức tiên quyết (Prerequisites):** Phase 14 · 01 (Agent Loop)
-**Thời gian (Time):** ~60 phút
+- **Loại bài học (Type):** Build (Thực hành xây dựng)
+- **Ngôn ngữ (Languages):** Python (`stdlib` — thư viện chuẩn)
+- **Kiến thức tiên quyết (Prerequisites):** Phase 14 · 01 (Agent Loop)
+- **Thời gian (Time):** ~60 phút
 
 ## Mục tiêu học tập (Learning Objectives)
 
